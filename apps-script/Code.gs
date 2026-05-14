@@ -2,7 +2,9 @@
  * 永田塾 入退室 — Google Apps Script（スプレッドシートに紐づけてデプロイ）
  *
  * 【最初にだけ】下の CONFIG をあなたの値に書き換えてください。
- * 【生徒マスタ列】A生徒ID B氏名 C保護者メール DQR値 E備考 F学年（F列は後から追加可。空は入退室画面で「（未設定）」）
+ * 【生徒マスタ】A生徒ID B氏名 C保護者メール DQR値 E備考 F学年（空は名前選択画面で「（未設定）」）
+ * 【入退室ログ】Aタイムスタンプ B生徒ID C生徒氏名 D種別 E送信ステータス F学年（記録時にマスタのFを自動で書き込む）
+ * スクリプトをスプレッドシートに紐づけた「コンテナバインド」のときは、SPREADSHEET_ID が空でも親ブックを開きます。
  * その後：拡張機能 → Apps Script → 貼り付け → デプロイ → 新しいデプロイ
  *   → 種類「ウェブアプリ」→ 次のユーザーとして実行「自分」→ アクセスできるユーザー「全員」
  * → デプロイ → ウェブアプリの URL をコピーして .env.local の GOOGLE_APPS_SCRIPT_URL に貼る
@@ -14,8 +16,8 @@ var CONFIG = {
   /** このスクリプトと Next.js の APPS_SCRIPT_SECRET を同じにする（長めのランダム文字列推奨） */
   DEPLOY_SECRET: "Monntitti0818Monntitti",
 
-  /** スプレッドシートID（URLの /d/ と /edit の間） */
-  SPREADSHEET_ID: "1ZUflh0k7gkZa2_1sb-uD0PhQ9znooItHQTgCKQC4fdc",
+  /** スプレッドシートID（URLの /d/ と /edit の間）。コンテナバインドなら空文字でも可 */
+  SPREADSHEET_ID: "1ObfpbEarx-EaZBG8-XTu2poAASt2EE_5Itybyq2-pBk",
 
   /** SendGrid（メール）。空にするとメール送信をスキップし送信ステータスはエラー扱い */
   SENDGRID_API_KEY: "",
@@ -43,7 +45,16 @@ function assertSecret_(body) {
 }
 
 function openSheets_() {
-  var ss = SpreadsheetApp.openById(CONFIG.SPREADSHEET_ID);
+  var ss = SpreadsheetApp.getActiveSpreadsheet();
+  if (!ss) {
+    var id = String(CONFIG.SPREADSHEET_ID || "").trim();
+    if (!id) {
+      throw new Error(
+        "スプレッドシートを開けません。スクリプトを表計算に紐づけるか、CONFIG.SPREADSHEET_ID を設定してください。"
+      );
+    }
+    ss = SpreadsheetApp.openById(id);
+  }
   var master = ss.getSheetByName(SHEET_MASTER);
   var log = ss.getSheetByName(SHEET_LOG);
   if (!master || !log) {
@@ -127,7 +138,7 @@ function findStudentByStudentId_(master, studentId) {
 }
 
 function getLatestLogType_(log, studentId) {
-  var values = log.getRange("A2:E").getValues();
+  var values = log.getRange("A2:F").getValues();
   var best = null;
   for (var i = 0; i < values.length; i++) {
     var r = values[i];
@@ -236,7 +247,14 @@ function handleScan_(body) {
     if (!ok) sendStatus = "エラー";
   }
 
-  sh.log.appendRow([sheetTs, st.studentId, st.name, type, sendStatus]);
+  sh.log.appendRow([
+    sheetTs,
+    st.studentId,
+    st.name,
+    type,
+    sendStatus,
+    String(st.grade || "").trim(),
+  ]);
 
   return jsonOut_({
     success: true,
@@ -258,7 +276,7 @@ function handleStudents_() {
 
 function handleLogsToday_() {
   var sh = openSheets_();
-  var values = sh.log.getRange("A2:E").getValues();
+  var values = sh.log.getRange("A2:F").getValues();
   var prefix = todayPrefixTokyo_();
   var logs = [];
   for (var i = 0; i < values.length; i++) {
@@ -271,6 +289,7 @@ function handleLogsToday_() {
       studentName: String(r[2] || ""),
       type: String(r[3] || ""),
       sendStatus: String(r[4] || ""),
+      grade: String(r[5] || ""),
     });
   }
   return jsonOut_({ logs: logs });

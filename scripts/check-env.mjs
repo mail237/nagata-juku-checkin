@@ -10,7 +10,11 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const root = path.join(__dirname, "..");
 const envPath = path.join(root, ".env.local");
 
-const CORE_KEYS = ["SENDGRID_API_KEY", "SENDGRID_FROM_EMAIL", "ADMIN_PIN"];
+/** 常に必須（管理画面ログイン用） */
+const REQUIRED_KEYS = ["ADMIN_PIN"];
+
+/** 未設定でもスキャン→スプレッドシート記録は可能。設定すると保護者メール送信が有効 */
+const OPTIONAL_SENDGRID = ["SENDGRID_API_KEY", "SENDGRID_FROM_EMAIL"];
 
 const SA_KEYS = [
   "GOOGLE_SERVICE_ACCOUNT_EMAIL",
@@ -74,12 +78,18 @@ function main() {
   const appsOk = APPS_KEYS.every((k) => filled(merged, k));
   const saOk = SA_KEYS.every((k) => filled(merged, k));
 
-  console.log("【共通】");
+  console.log("【共通・必須】");
   let ok = true;
-  for (const key of CORE_KEYS) {
+  for (const key of REQUIRED_KEYS) {
     const is = filled(merged, key);
     if (!is) ok = false;
     console.log(`  ${is ? "✓" : "✗"} ${key}`);
+  }
+
+  console.log("\n【メール（任意・空なら送信はスキップ／ログは記録されます）】");
+  for (const key of OPTIONAL_SENDGRID) {
+    const is = filled(merged, key);
+    console.log(`  ${is ? "✓" : "△"} ${key}`);
   }
 
   console.log("\n【スプレッドシート接続（どちらか一方）】");

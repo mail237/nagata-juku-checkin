@@ -24,7 +24,8 @@ export async function GET() {
     appsScriptProxy: appsScript,
     adminPin: isSet(process.env.ADMIN_PIN),
   };
-  const ready = checks.sendgrid && checks.googleSheets && checks.adminPin;
+  /** SendGrid 未設定でも入退室ログ記録は可能（送信ステータスはエラー扱い） */
+  const ready = checks.googleSheets && checks.adminPin;
   return NextResponse.json(
     {
       ok: true,

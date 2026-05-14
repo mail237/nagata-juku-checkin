@@ -19,6 +19,7 @@ type Log = {
   studentName: string;
   type: string;
   sendStatus: string;
+  grade?: string;
 };
 
 export default function AdminPage() {
@@ -200,6 +201,7 @@ export default function AdminPage() {
                     <th className="whitespace-nowrap px-3 py-2 font-medium">氏名</th>
                     <th className="whitespace-nowrap px-3 py-2 font-medium">種別</th>
                     <th className="whitespace-nowrap px-3 py-2 font-medium">送信</th>
+                    <th className="whitespace-nowrap px-3 py-2 font-medium">学年</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -212,6 +214,7 @@ export default function AdminPage() {
                       <td className="px-3 py-2">{log.studentName}</td>
                       <td className="px-3 py-2">{log.type}</td>
                       <td className="px-3 py-2">{log.sendStatus}</td>
+                      <td className="px-3 py-2 text-slate-700">{log.grade || "—"}</td>
                     </tr>
                   ))}
                 </tbody>

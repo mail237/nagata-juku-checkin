@@ -29,6 +29,7 @@ export async function GET() {
       studentName: r[2] ?? "",
       type: r[3] ?? "",
       sendStatus: r[4] ?? "",
+      grade: r[5] ?? "",
     }));
     return NextResponse.json({ logs });
   } catch (e) {

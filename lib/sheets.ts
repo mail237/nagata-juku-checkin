@@ -112,7 +112,7 @@ export async function getLatestLogTypeForStudent(
   const spreadsheetId = getSpreadsheetId();
   const res = await sheets.spreadsheets.values.get({
     spreadsheetId,
-    range: `'${SHEET_LOG}'!A2:E`,
+    range: `'${SHEET_LOG}'!A2:F`,
   });
   const rows = res.data.values ?? [];
   let best: { t: number; type: "入室" | "退室" } | null = null;
@@ -155,7 +155,7 @@ export async function appendLogRow(values: string[]): Promise<void> {
   const spreadsheetId = getSpreadsheetId();
   await sheets.spreadsheets.values.append({
     spreadsheetId,
-    range: `'${SHEET_LOG}'!A:E`,
+    range: `'${SHEET_LOG}'!A:F`,
     valueInputOption: "USER_ENTERED",
     insertDataOption: "INSERT_ROWS",
     requestBody: { values: [values] },
@@ -235,7 +235,7 @@ export async function getTodayLogs(): Promise<string[][]> {
   const spreadsheetId = getSpreadsheetId();
   const res = await sheets.spreadsheets.values.get({
     spreadsheetId,
-    range: `'${SHEET_LOG}'!A2:E`,
+    range: `'${SHEET_LOG}'!A2:F`,
   });
   const rows = res.data.values ?? [];
   const prefix = todayPrefixTokyo();

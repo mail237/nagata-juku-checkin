@@ -42,6 +42,7 @@ async function checkInWithStudent(student: StudentRow, type: "入室" | "退室"
     student.name,
     type,
     sendStatus,
+    student.grade.trim(),
   ]);
 
   return NextResponse.json({
