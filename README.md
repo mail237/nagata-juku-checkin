@@ -1,36 +1,32 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# 永田塾 入退室管理アプリ
 
-## Getting Started
+タブレットで **学年・名前を選ぶ**か、**QRの文字／写真**から、**入室・退室を Google スプレッドシートに記録**し、**保護者へメール通知**する Next.js アプリです。
 
-First, run the development server:
+## すぐにやること（短い版）
 
-```bash
-npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
-```
+1. リポジトリのフォルダに移動: `cd nagata-juku-checkin`
+2. `npm install`
+3. **GoogleのJSON鍵が作れない場合**は、まず **[apps-script/README.md](./apps-script/README.md)**（鍵なし）
+4. それ以外は **[SETUP.md](./SETUP.md)** を上から順に実行
+5. `npm run check-env` → 問題なければ `npm run dev`
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+## 主なURL
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+| 用途 | パス |
+|------|------|
+| 入退室画面 | `/` |
+| 管理画面 | `/admin`（PIN） |
+| スキャンAPI | `POST /api/scan` |
+| 設定確認（秘密は返さない） | `GET /api/health` |
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+## 環境変数
 
-## Learn More
+`.env.example` を参照し、同じキーを **`.env.local`**（ローカル）または **Vercel の Environment Variables**（本番）に設定します。
 
-To learn more about Next.js, take a look at the following resources:
+## 技術スタック
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+Next.js（App Router）、`jsqr`（画像内QRの解読）、`googleapis`、`@sendgrid/mail`。ホスティング想定は Vercel。
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+## ライセンス
 
-## Deploy on Vercel
-
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
-
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+利用先の方針に合わせてください（未指定）。
