@@ -1,6 +1,8 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
+import { CheckinCelebration } from "@/components/CheckinCelebration";
+import { pickCheckinMessage } from "@/lib/checkin-messages";
 
 type PickStudent = { studentId: string; name: string; grade: string };
 
@@ -26,6 +28,10 @@ export function PickStudentCheckin() {
   const [toast, setToast] = useState<{ message: string; variant: "success" | "error" } | null>(
     null
   );
+  const [celebration, setCelebration] = useState<{
+    type: "入室" | "退室";
+    message: string;
+  } | null>(null);
 
   const showToast = useCallback((message: string, variant: "success" | "error") => {
     setToast({ message, variant });
@@ -83,8 +89,14 @@ export function PickStudentCheckin() {
           body: JSON.stringify({ studentId: studentId.trim(), entryType }),
         });
         const data = await res.json();
-        if (data.success) {
-          showToast(`${data.type} — ${data.studentName}`, "success");
+        if (data.success && (data.type === "入室" || data.type === "退室")) {
+          const name = String(data.studentName ?? "");
+          setCelebration({
+            type: data.type,
+            message: pickCheckinMessage(data.type, name),
+          });
+        } else if (data.success) {
+          showToast("記録しました", "success");
         } else {
           showToast(data.error ?? "エラーが発生しました", "error");
         }
@@ -198,22 +210,30 @@ export function PickStudentCheckin() {
                 type="button"
                 onClick={() => void submit("入室")}
                 disabled={!studentId || busy}
-                className="min-h-[3.75rem] flex-1 rounded-2xl bg-gradient-to-br from-emerald-600 to-emerald-800 px-5 py-4 text-lg font-bold text-white shadow-lg shadow-emerald-900/30 transition hover:from-emerald-500 hover:to-emerald-700 disabled:cursor-not-allowed disabled:opacity-40 disabled:shadow-none sm:min-h-[4rem] sm:text-xl"
+                className="min-h-[3.75rem] flex-1 rounded-2xl bg-gradient-to-br from-emerald-600 to-emerald-800 px-5 py-4 text-lg font-bold text-white shadow-lg shadow-emerald-900/30 transition hover:from-emerald-500 hover:to-emerald-700 active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-40 disabled:shadow-none sm:min-h-[4rem] sm:text-xl"
               >
-                {busy ? "処理中…" : "入室"}
+                {busy ? "処理中…" : "入室 🚪"}
               </button>
               <button
                 type="button"
                 onClick={() => void submit("退室")}
                 disabled={!studentId || busy}
-                className="min-h-[3.75rem] flex-1 rounded-2xl bg-gradient-to-br from-slate-600 to-slate-800 px-5 py-4 text-lg font-bold text-white shadow-lg shadow-slate-900/30 transition hover:from-slate-500 hover:to-slate-700 disabled:cursor-not-allowed disabled:opacity-40 disabled:shadow-none sm:min-h-[4rem] sm:text-xl"
+                className="min-h-[3.75rem] flex-1 rounded-2xl bg-gradient-to-br from-slate-600 to-slate-800 px-5 py-4 text-lg font-bold text-white shadow-lg shadow-slate-900/30 transition hover:from-slate-500 hover:to-slate-700 active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-40 disabled:shadow-none sm:min-h-[4rem] sm:text-xl"
               >
-                {busy ? "処理中…" : "退室"}
+                {busy ? "処理中…" : "退室 👋"}
               </button>
             </div>
           </div>
         )}
       </div>
+
+      {celebration && (
+        <CheckinCelebration
+          type={celebration.type}
+          message={celebration.message}
+          onDone={() => setCelebration(null)}
+        />
+      )}
 
       {toast && (
         <div

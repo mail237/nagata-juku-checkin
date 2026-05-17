@@ -1,9 +1,13 @@
 "use client";
 
 import Link from "next/link";
+import { useState } from "react";
 import { PickStudentCheckin } from "@/components/PickStudentCheckin";
+import { timeGreetingTokyo } from "@/lib/checkin-messages";
 
 export function HomeWithScan() {
+  const [greeting] = useState(() => timeGreetingTokyo());
+
   return (
     <div className="flex min-h-full min-w-0 w-full flex-1 flex-col">
       <header className="shrink-0 border-b border-indigo-950/15 bg-gradient-to-r from-indigo-950 via-indigo-900 to-indigo-950 text-white shadow-md shadow-indigo-950/20">
@@ -13,6 +17,9 @@ export function HomeWithScan() {
               Nagata Juku
             </p>
             <h1 className="truncate text-2xl font-bold tracking-tight sm:text-3xl">永田塾 入退室</h1>
+            <p className="mt-1 truncate text-sm font-medium text-indigo-100/90 sm:text-base">
+              {greeting}
+            </p>
           </div>
           <Link
             href="/admin"
