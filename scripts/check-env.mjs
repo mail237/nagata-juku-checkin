@@ -22,7 +22,9 @@ const SA_KEYS = [
   "GOOGLE_SPREADSHEET_ID",
 ];
 
-const APPS_KEYS = ["GOOGLE_APPS_SCRIPT_URL", "APPS_SCRIPT_SECRET"];
+/** URL はコード内デフォルト。SECRET だけ必須 */
+const APPS_KEYS = ["APPS_SCRIPT_SECRET"];
+const APPS_OPTIONAL = ["GOOGLE_APPS_SCRIPT_URL"];
 
 function parseEnvFile(content) {
   const out = {};
@@ -98,10 +100,15 @@ function main() {
     const is = filled(merged, key);
     console.log(`    ${is ? "✓" : "○"} ${key}`);
   }
-  console.log("  B) Apps Script 中継（鍵不要）");
+  console.log("  B) Apps Script 中継（鍵不要・URLはコード内デフォルト可）");
   for (const key of APPS_KEYS) {
     const is = filled(merged, key);
-    console.log(`    ${is ? "✓" : "○"} ${key}`);
+    if (!is) ok = false;
+    console.log(`    ${is ? "✓" : "✗"} ${key}`);
+  }
+  for (const key of APPS_OPTIONAL) {
+    const is = filled(merged, key);
+    console.log(`    ${is ? "✓" : "○"} ${key}（任意）`);
   }
 
   if (!appsOk && !saOk) {

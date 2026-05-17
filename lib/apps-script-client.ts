@@ -1,7 +1,9 @@
 /**
  * Google Apps Script Web アプリ経由でスプレッドシートを操作する（SA鍵不要）。
- * GOOGLE_APPS_SCRIPT_URL + APPS_SCRIPT_SECRET が設定されているときに使用する。
+ * APPS_SCRIPT_SECRET + 下記 URL（コード内デフォルト）で動作。
  */
+
+import { resolveAppsScriptUrl } from "./apps-script-config";
 
 export class AppsScriptError extends Error {
   statusCode: number;
@@ -12,18 +14,15 @@ export class AppsScriptError extends Error {
 }
 
 function requireAppsScriptEnv(): { url: string; secret: string } {
-  const url = process.env.GOOGLE_APPS_SCRIPT_URL?.trim();
   const secret = process.env.APPS_SCRIPT_SECRET?.trim();
-  if (!url || !secret) {
-    throw new Error("Apps Script が未設定です（GOOGLE_APPS_SCRIPT_URL / APPS_SCRIPT_SECRET）");
+  if (!secret) {
+    throw new Error("Apps Script が未設定です（APPS_SCRIPT_SECRET）");
   }
-  return { url, secret };
+  return { url: resolveAppsScriptUrl(), secret };
 }
 
 export function appsScriptSheetsEnabled(): boolean {
-  const url = process.env.GOOGLE_APPS_SCRIPT_URL?.trim();
-  const secret = process.env.APPS_SCRIPT_SECRET?.trim();
-  return Boolean(url && secret);
+  return Boolean(process.env.APPS_SCRIPT_SECRET?.trim());
 }
 
 export async function appsScriptCall<T>(
