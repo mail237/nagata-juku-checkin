@@ -114,6 +114,10 @@ export function PickStudentCheckin() {
       <div className="border-b border-indigo-100/80 bg-gradient-to-br from-indigo-50 via-white to-violet-50/50 px-6 py-7 sm:px-10 sm:py-9">
         <h2 className="text-2xl font-bold tracking-tight text-slate-900 sm:text-3xl">学年・名前で記録</h2>
         <p className="mt-3 text-base leading-relaxed text-slate-600 sm:text-lg">
+          <strong className="font-medium text-slate-800">スマホ・タブレットどちらでも</strong>
+          この画面から記録できます。QRコードの読み取りは不要です（同じ端末の画面を読むことはできないため）。
+        </p>
+        <p className="mt-3 text-base leading-relaxed text-slate-600 sm:text-lg">
           学年はスプレッドシート「<strong className="font-medium text-slate-800">生徒マスタ</strong>」の{" "}
           <strong className="font-medium text-slate-800">F列</strong>です。F列を編集したあとは下の
           <strong className="font-medium text-slate-800">一覧を再読み込み</strong>を押すと反映されます。
