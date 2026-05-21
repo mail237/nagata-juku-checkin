@@ -12,11 +12,16 @@ const DEPRECATED_DEPLOYMENT_IDS = [
 
 export function resolveAppsScriptUrl(): string {
   const fromEnv = process.env.GOOGLE_APPS_SCRIPT_URL?.trim();
-  if (fromEnv && fromEnv.includes("/macros/s/") && fromEnv.endsWith("/exec")) {
-    for (const bad of DEPRECATED_DEPLOYMENT_IDS) {
-      if (fromEnv.includes(bad)) return APPS_SCRIPT_WEB_APP_URL;
-    }
+  if (
+    fromEnv &&
+    fromEnv.includes("/macros/s/") &&
+    fromEnv.endsWith("/exec") &&
+    fromEnv.includes("AKfycbwESRlXvF8cGEOTgwuJM3CFMgMGFGuPunKF_PrSdZ2lw0pijynZy_umXDS9-2j8GI4C-A")
+  ) {
     return fromEnv;
+  }
+  for (const bad of DEPRECATED_DEPLOYMENT_IDS) {
+    if (fromEnv?.includes(bad)) return APPS_SCRIPT_WEB_APP_URL;
   }
   return APPS_SCRIPT_WEB_APP_URL;
 }
