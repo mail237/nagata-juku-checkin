@@ -41,3 +41,4 @@ RECOVERY-CODES.local.txt
 # typescript
 *.tsbuildinfo
 next-env.d.ts
+apps-script/.clasp.json

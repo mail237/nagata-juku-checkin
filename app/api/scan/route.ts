@@ -56,78 +56,20 @@ async function checkInWithStudent(student: StudentRow, type: "入室" | "退室"
   });
 }
 
-function scheduleParentEmail(
-  studentId: string,
+function buildScanBody(
+  st: { qrValue: string; studentId: string },
   type: "入室" | "退室",
-  at: Date,
-  sheetTs: string,
-  rosterPromise: Promise<Awaited<ReturnType<typeof loadStudentsCached>>>
-) {
-  if (!isSendGridConfigured()) return;
-
-  after(async () => {
-    const list = await rosterPromise;
-    const st = list.find((s) => s.studentId === studentId);
-    if (!st?.parentEmail) return;
-
-    const sendStatus = await resolveSendStatusForParent(
-      st.parentEmail,
-      st.name,
-      type,
-      at
-    );
-    try {
-      await appsScriptCall({
-        action: "updateLogSendStatus",
-        studentId: st.studentId,
-        sheetTimestamp: sheetTs,
-        sendStatus,
-      });
-    } catch {
-      /* 旧 GAS（updateLogSendStatus 未実装）では E列は手動か GAS 再デプロイが必要 */
-    }
-  });
-}
-
-/** 名前選択画面: GAS へ scan だけ（1回）。生徒検索はしない */
-async function scanFastPath(
-  studentId: string,
-  qrValue: string,
-  entryType: "入室" | "退室"
-) {
-  const at = new Date();
-  const rosterPromise = loadStudentsCached();
-
-  const scanPayload: Record<string, unknown> = {
+  sendStatus: "送信済み" | "エラー"
+): Record<string, unknown> {
+  const body: Record<string, unknown> = {
     action: "scan",
-    qrValue,
-    entryType,
+    entryType: type,
+    emailHandledByServer: true,
+    sendStatus,
   };
-  if (isSendGridConfigured()) {
-    scanPayload.emailHandledByServer = true;
-    scanPayload.sendStatus = "送信済み";
-  }
-
-  const data = await appsScriptCall<{
-    success?: boolean;
-    error?: string;
-    studentName?: string;
-    type?: string;
-    timestamp?: string;
-    sheetTimestamp?: string;
-  }>(scanPayload);
-
-  if (data.success === false) {
-    return NextResponse.json(data);
-  }
-
-  const sheetTs =
-    typeof data.sheetTimestamp === "string"
-      ? data.sheetTimestamp
-      : formatTimestampTokyo(at);
-
-  scheduleParentEmail(studentId, entryType, at, sheetTs, rosterPromise);
-  return NextResponse.json(data);
+  if (st.qrValue) body.qrValue = st.qrValue;
+  else body.studentId = st.studentId;
+  return body;
 }
 
 async function scanViaAppsScript(
@@ -135,10 +77,7 @@ async function scanViaAppsScript(
   qrValue: string,
   entryExplicit: "入室" | "退室" | null
 ) {
-  if (qrValue && entryExplicit && studentId) {
-    return scanFastPath(studentId, qrValue, entryExplicit);
-  }
-
+  const rosterPromise = loadStudentsCached();
   const st = await findStudentViaGas(studentId, qrValue);
   if (!st) {
     return NextResponse.json({
@@ -156,18 +95,16 @@ async function scanViaAppsScript(
 
   const type = entryExplicit ?? nextEntryType(null);
   const at = new Date();
-  const rosterPromise = loadStudentsCached();
 
-  const body: Record<string, unknown> = {
-    action: "scan",
-    entryType: type,
-  };
-  if (isSendGridConfigured()) {
-    body.emailHandledByServer = true;
-    body.sendStatus = "送信済み";
+  let sendStatus: "送信済み" | "エラー" = "エラー";
+  if (isSendGridConfigured() && st.parentEmail) {
+    sendStatus = await resolveSendStatusForParent(
+      st.parentEmail,
+      st.name,
+      type,
+      at
+    );
   }
-  if (st.qrValue) body.qrValue = st.qrValue;
-  else body.studentId = st.studentId;
 
   const data = await appsScriptCall<{
     success?: boolean;
@@ -176,7 +113,7 @@ async function scanViaAppsScript(
     type?: string;
     timestamp?: string;
     sheetTimestamp?: string;
-  }>(body);
+  }>(buildScanBody(st, type, sendStatus));
 
   if (data.success === false) {
     return NextResponse.json(data);
@@ -187,7 +124,22 @@ async function scanViaAppsScript(
       ? data.sheetTimestamp
       : formatTimestampTokyo(at);
 
-  scheduleParentEmail(st.studentId, type, at, sheetTs, rosterPromise);
+  if (sendStatus === "送信済み") {
+    after(async () => {
+      try {
+        await appsScriptCall({
+          action: "updateLogSendStatus",
+          studentId: st.studentId,
+          sheetTimestamp: sheetTs,
+          sendStatus: "送信済み",
+        });
+      } catch {
+        /* 旧 GAS では未対応 → 下の deploy:gas で Code.gs を新バージョンデプロイ */
+      }
+    });
+  }
+
+  void rosterPromise;
   return NextResponse.json(data);
 }
 
