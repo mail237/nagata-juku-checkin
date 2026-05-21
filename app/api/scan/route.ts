@@ -13,6 +13,8 @@ import {
   nextEntryType,
   type StudentRow,
 } from "@/lib/sheets";
+import { sendParentEmailAfterAppsScriptScan } from "@/lib/scan-email";
+import { isSendGridConfigured } from "@/lib/sendgrid-config";
 import { sendParentEmail } from "@/lib/send-parent-email";
 import { formatIsoTokyo, formatTimestampTokyo } from "@/lib/time";
 
@@ -75,11 +77,13 @@ export async function POST(req: Request) {
           ? {
               action: "scan" as const,
               studentId,
+              emailHandledByServer: isSendGridConfigured(),
               ...(entryExplicit ? { entryType: entryExplicit } : {}),
             }
           : {
               action: "scan" as const,
               qrValue,
+              emailHandledByServer: isSendGridConfigured(),
               ...(entryExplicit ? { entryType: entryExplicit } : {}),
             };
         const data = await appsScriptCall<{
@@ -88,7 +92,28 @@ export async function POST(req: Request) {
           studentName?: string;
           type?: string;
           timestamp?: string;
+          studentId?: string;
+          parentEmail?: string;
+          sheetTimestamp?: string;
         }>(payload);
+        if (
+          data.success &&
+          data.studentName &&
+          (data.type === "入室" || data.type === "退室")
+        ) {
+          await sendParentEmailAfterAppsScriptScan(
+            {
+              success: true,
+              studentName: data.studentName,
+              type: data.type,
+              timestamp: data.timestamp,
+              studentId: data.studentId,
+              parentEmail: data.parentEmail,
+              sheetTimestamp: data.sheetTimestamp,
+            },
+            studentId
+          );
+        }
         return NextResponse.json(data);
       } catch (e) {
         if (e instanceof AppsScriptError) {

@@ -221,8 +221,11 @@ function handleScan_(body) {
   var at = new Date();
   var sheetTs = formatTokyo_(at);
 
+  var emailViaServer = body.emailHandledByServer === true;
   var sendStatus = "送信済み";
   if (!st.parentEmail) {
+    sendStatus = "エラー";
+  } else if (emailViaServer) {
     sendStatus = "エラー";
   } else {
     var timeStr = sheetTs;
@@ -261,7 +264,29 @@ function handleScan_(body) {
     studentName: st.name,
     type: type,
     timestamp: formatIsoTokyo_(at),
+    sheetTimestamp: sheetTs,
+    studentId: st.studentId,
+    parentEmail: st.parentEmail,
   });
+}
+
+function handleUpdateLogSendStatus_(body) {
+  var studentId = String(body.studentId || "").trim();
+  var sheetTs = String(body.sheetTimestamp || "").trim();
+  var sendStatus = String(body.sendStatus || "").trim();
+  if (!studentId || !sheetTs || !sendStatus) {
+    return err_("パラメータ不足です");
+  }
+  var sh = openSheets_();
+  var values = sh.log.getRange("A2:F").getValues();
+  for (var i = values.length - 1; i >= 0; i--) {
+    var r = values[i];
+    if (String(r[1] || "").trim() === studentId && String(r[0] || "").trim() === sheetTs) {
+      sh.log.getRange(i + 2, 5).setValue(sendStatus);
+      return jsonOut_({ ok: true });
+    }
+  }
+  return err_("ログ行が見つかりません");
 }
 
 function handleStudents_() {
@@ -330,6 +355,7 @@ function doPost(e) {
     if (action === "students") return handleStudents_();
     if (action === "logsToday") return handleLogsToday_();
     if (action === "updateStudent") return handleUpdateStudent_(body);
+    if (action === "updateLogSendStatus") return handleUpdateLogSendStatus_(body);
     return err_("未知の action です: " + action);
   } catch (ex) {
     return jsonOut_({
