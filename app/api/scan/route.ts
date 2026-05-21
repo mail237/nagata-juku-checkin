@@ -5,6 +5,10 @@ import {
   appsScriptSheetsEnabled,
 } from "@/lib/apps-script-client";
 import {
+  findStudentViaGas,
+  getLastLogTypeViaGas,
+} from "@/lib/apps-script-student";
+import {
   appendLogRow,
   explicitEntryTypeError,
   findStudentByQr,
@@ -60,29 +64,15 @@ async function scanViaAppsScript(
   qrValue: string,
   entryExplicit: "入室" | "退室" | null
 ) {
-  const lookup = studentId
-    ? { action: "getStudent" as const, studentId }
-    : { action: "getStudent" as const, qrValue };
-
-  const info = await appsScriptCall<{
-    ok?: boolean;
-    error?: string;
-    student?: { studentId: string; name: string; parentEmail: string; grade: string };
-  }>(lookup);
-
-  if (!info.ok || !info.student) {
+  const st = await findStudentViaGas(studentId, qrValue);
+  if (!st) {
     return NextResponse.json({
       success: false,
-      error: info.error ?? "生徒が見つかりませんでした",
+      error: "生徒が見つかりませんでした",
     });
   }
 
-  const st = info.student;
-  const lastRes = await appsScriptCall<{ type?: "入室" | "退室" | null }>({
-    action: "getLastLogType",
-    studentId: st.studentId,
-  });
-  const last = lastRes.type ?? null;
+  const last = await getLastLogTypeViaGas(st.studentId);
 
   let type: "入室" | "退室";
   if (entryExplicit) {
@@ -103,19 +93,52 @@ async function scanViaAppsScript(
     at
   );
 
+  const scanBody: Record<string, unknown> = {
+    action: "scan",
+    entryType: type,
+    emailHandledByServer: true,
+    sendStatus,
+  };
+  if (st.qrValue) {
+    scanBody.qrValue = st.qrValue;
+  } else if (st.studentId) {
+    scanBody.studentId = st.studentId;
+  } else {
+    return NextResponse.json({
+      success: false,
+      error: "生徒マスタに QR 値が未設定です（D列）",
+    });
+  }
+
   const data = await appsScriptCall<{
     success?: boolean;
     error?: string;
     studentName?: string;
     type?: string;
     timestamp?: string;
-  }>({
-    action: "scan",
-    studentId: st.studentId,
-    entryType: type,
-    emailHandledByServer: true,
-    sendStatus,
-  });
+    sheetTimestamp?: string;
+  }>(scanBody);
+
+  if (data.success === false) {
+    return NextResponse.json(data);
+  }
+
+  if (sendStatus === "送信済み") {
+    const sheetTs =
+      typeof data.sheetTimestamp === "string"
+        ? data.sheetTimestamp
+        : formatTimestampTokyo(at);
+    try {
+      await appsScriptCall({
+        action: "updateLogSendStatus",
+        studentId: st.studentId,
+        sheetTimestamp: sheetTs,
+        sendStatus,
+      });
+    } catch {
+      /* 旧 GAS では未対応。新 GAS 再デプロイ後は E列が「送信済み」になる */
+    }
+  }
 
   return NextResponse.json(data);
 }
@@ -142,17 +165,19 @@ export async function POST(req: Request) {
           return await scanViaAppsScript(studentId, qrValue, entryExplicit);
         }
 
-        const payload = studentId
-          ? {
-              action: "scan" as const,
-              studentId,
-              ...(entryExplicit ? { entryType: entryExplicit } : {}),
-            }
-          : {
-              action: "scan" as const,
-              qrValue,
-              ...(entryExplicit ? { entryType: entryExplicit } : {}),
-            };
+        const st = await findStudentViaGas(studentId, qrValue);
+        if (!st) {
+          return NextResponse.json({
+            success: false,
+            error: "生徒が見つかりませんでした",
+          });
+        }
+        const payload: Record<string, unknown> = {
+          action: "scan",
+          ...(entryExplicit ? { entryType: entryExplicit } : {}),
+        };
+        if (st.qrValue) payload.qrValue = st.qrValue;
+        else payload.studentId = st.studentId;
         const data = await appsScriptCall(payload);
         return NextResponse.json(data);
       } catch (e) {
