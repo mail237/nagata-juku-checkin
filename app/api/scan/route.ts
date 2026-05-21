@@ -76,7 +76,6 @@ function scheduleParentEmail(
       type,
       at
     );
-    if (sendStatus !== "送信済み") return;
     try {
       await appsScriptCall({
         action: "updateLogSendStatus",
@@ -85,7 +84,7 @@ function scheduleParentEmail(
         sendStatus,
       });
     } catch {
-      /* 旧 GAS は未対応 */
+      /* 旧 GAS（updateLogSendStatus 未実装）では E列は手動か GAS 再デプロイが必要 */
     }
   });
 }
@@ -99,6 +98,16 @@ async function scanFastPath(
   const at = new Date();
   const rosterPromise = loadStudentsCached();
 
+  const scanPayload: Record<string, unknown> = {
+    action: "scan",
+    qrValue,
+    entryType,
+  };
+  if (isSendGridConfigured()) {
+    scanPayload.emailHandledByServer = true;
+    scanPayload.sendStatus = "送信済み";
+  }
+
   const data = await appsScriptCall<{
     success?: boolean;
     error?: string;
@@ -106,11 +115,7 @@ async function scanFastPath(
     type?: string;
     timestamp?: string;
     sheetTimestamp?: string;
-  }>({
-    action: "scan",
-    qrValue,
-    entryType,
-  });
+  }>(scanPayload);
 
   if (data.success === false) {
     return NextResponse.json(data);
@@ -157,6 +162,10 @@ async function scanViaAppsScript(
     action: "scan",
     entryType: type,
   };
+  if (isSendGridConfigured()) {
+    body.emailHandledByServer = true;
+    body.sendStatus = "送信済み";
+  }
   if (st.qrValue) body.qrValue = st.qrValue;
   else body.studentId = st.studentId;
 
