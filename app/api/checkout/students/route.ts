@@ -23,11 +23,13 @@ export async function GET() {
         action: "students",
       });
       const raw = data.students ?? [];
-      const students = raw.map((s) => ({
-        studentId: String(s.studentId ?? "").trim(),
-        name: String(s.name ?? "").trim(),
-        grade: String(s.grade ?? "").trim() || UNSET,
-      }));
+      const students = raw
+        .map((s) => ({
+          studentId: String(s.studentId ?? "").trim(),
+          name: String(s.name ?? "").trim(),
+          grade: String(s.grade ?? "").trim() || UNSET,
+        }))
+        .filter((s) => s.studentId && s.name);
       return NextResponse.json({ students }, { headers: noStoreHeaders });
     }
     const rows = await getAllStudents();
