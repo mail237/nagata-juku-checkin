@@ -1,9 +1,9 @@
 import { NextResponse } from "next/server";
 import {
   AppsScriptError,
-  appsScriptCall,
   appsScriptSheetsEnabled,
 } from "@/lib/apps-script-client";
+import { loadStudentsCached } from "@/lib/apps-script-student";
 import { getAllStudents } from "@/lib/sheets";
 
 const UNSET = "（未設定）";
@@ -19,17 +19,13 @@ const noStoreHeaders = {
 export async function GET() {
   try {
     if (appsScriptSheetsEnabled()) {
-      const data = await appsScriptCall<{ students: Array<{ studentId: string; name: string; grade?: string }> }>({
-        action: "students",
-      });
-      const raw = data.students ?? [];
-      const students = raw
-        .map((s) => ({
-          studentId: String(s.studentId ?? "").trim(),
-          name: String(s.name ?? "").trim(),
-          grade: String(s.grade ?? "").trim() || UNSET,
-        }))
-        .filter((s) => s.studentId && s.name);
+      const raw = await loadStudentsCached();
+      const students = raw.map((s) => ({
+        studentId: s.studentId,
+        name: s.name,
+        grade: s.grade || UNSET,
+        qrValue: s.qrValue,
+      }));
       return NextResponse.json({ students }, { headers: noStoreHeaders });
     }
     const rows = await getAllStudents();

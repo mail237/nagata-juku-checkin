@@ -1,4 +1,4 @@
-import { NextResponse } from "next/server";
+import { after, NextResponse } from "next/server";
 import {
   AppsScriptError,
   appsScriptCall,
@@ -59,6 +59,24 @@ async function checkInWithStudent(student: StudentRow, type: "入室" | "退室"
   });
 }
 
+function buildScanBody(
+  st: { qrValue: string; studentId: string },
+  type: "入室" | "退室",
+  sendStatus?: "送信済み" | "エラー"
+): Record<string, unknown> {
+  const body: Record<string, unknown> = {
+    action: "scan",
+    entryType: type,
+  };
+  if (sendStatus) {
+    body.emailHandledByServer = true;
+    body.sendStatus = sendStatus;
+  }
+  if (st.qrValue) body.qrValue = st.qrValue;
+  else if (st.studentId) body.studentId = st.studentId;
+  return body;
+}
+
 async function scanViaAppsScript(
   studentId: string,
   qrValue: string,
@@ -72,44 +90,27 @@ async function scanViaAppsScript(
     });
   }
 
-  const last = await getLastLogTypeViaGas(st.studentId);
-
-  let type: "入室" | "退室";
-  if (entryExplicit) {
-    const err = explicitEntryTypeError(last, entryExplicit);
-    if (err) {
-      return NextResponse.json({ success: false, error: err });
-    }
-    type = entryExplicit;
-  } else {
-    type = nextEntryType(last);
-  }
-
-  const at = new Date();
-  const sendStatus = await resolveSendStatusForParent(
-    st.parentEmail,
-    st.name,
-    type,
-    at
-  );
-
-  const scanBody: Record<string, unknown> = {
-    action: "scan",
-    entryType: type,
-    emailHandledByServer: true,
-    sendStatus,
-  };
-  if (st.qrValue) {
-    scanBody.qrValue = st.qrValue;
-  } else if (st.studentId) {
-    scanBody.studentId = st.studentId;
-  } else {
+  if (!st.qrValue && !st.studentId) {
     return NextResponse.json({
       success: false,
       error: "生徒マスタに QR 値が未設定です（D列）",
     });
   }
 
+  let type: "入室" | "退室";
+  if (entryExplicit) {
+    type = entryExplicit;
+  } else {
+    const last = await getLastLogTypeViaGas(st.studentId);
+    type = nextEntryType(last);
+  }
+
+  const at = new Date();
+  const parentEmail = st.parentEmail;
+  const studentName = st.name;
+  const sid = st.studentId;
+
+  // 1) 先にスプレッドシートへ記録（ここまで待つ → 画面を早く返す）
   const data = await appsScriptCall<{
     success?: boolean;
     error?: string;
@@ -117,27 +118,38 @@ async function scanViaAppsScript(
     type?: string;
     timestamp?: string;
     sheetTimestamp?: string;
-  }>(scanBody);
+  }>(buildScanBody(st, type));
 
   if (data.success === false) {
     return NextResponse.json(data);
   }
 
-  if (sendStatus === "送信済み") {
-    const sheetTs =
-      typeof data.sheetTimestamp === "string"
-        ? data.sheetTimestamp
-        : formatTimestampTokyo(at);
-    try {
-      await appsScriptCall({
-        action: "updateLogSendStatus",
-        studentId: st.studentId,
-        sheetTimestamp: sheetTs,
-        sendStatus,
-      });
-    } catch {
-      /* 旧 GAS では未対応。新 GAS 再デプロイ後は E列が「送信済み」になる */
-    }
+  const sheetTs =
+    typeof data.sheetTimestamp === "string"
+      ? data.sheetTimestamp
+      : formatTimestampTokyo(at);
+
+  // 2) メール送信と E列更新は応答後に実行（体感的な待ち時間を短縮）
+  if (isSendGridConfigured() && parentEmail) {
+    after(async () => {
+      const sendStatus = await resolveSendStatusForParent(
+        parentEmail,
+        studentName,
+        type,
+        at
+      );
+      if (sendStatus !== "送信済み") return;
+      try {
+        await appsScriptCall({
+          action: "updateLogSendStatus",
+          studentId: sid,
+          sheetTimestamp: sheetTs,
+          sendStatus,
+        });
+      } catch {
+        /* 旧 GAS は未対応 */
+      }
+    });
   }
 
   return NextResponse.json(data);
@@ -172,13 +184,9 @@ export async function POST(req: Request) {
             error: "生徒が見つかりませんでした",
           });
         }
-        const payload: Record<string, unknown> = {
-          action: "scan",
-          ...(entryExplicit ? { entryType: entryExplicit } : {}),
-        };
-        if (st.qrValue) payload.qrValue = st.qrValue;
-        else payload.studentId = st.studentId;
-        const data = await appsScriptCall(payload);
+        const data = await appsScriptCall(
+          buildScanBody(st, entryExplicit ?? "入室")
+        );
         return NextResponse.json(data);
       } catch (e) {
         if (e instanceof AppsScriptError) {

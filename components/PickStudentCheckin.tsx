@@ -4,7 +4,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { CheckinCelebration } from "@/components/CheckinCelebration";
 import { pickCheckinMessage } from "@/lib/checkin-messages";
 
-type PickStudent = { studentId: string; name: string; grade: string };
+type PickStudent = { studentId: string; name: string; grade: string; qrValue?: string };
 
 const UNSET = "（未設定）";
 
@@ -86,7 +86,11 @@ export function PickStudentCheckin() {
         const res = await fetch("/api/scan", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ studentId: studentId.trim(), entryType }),
+          body: JSON.stringify({
+            studentId: studentId.trim(),
+            entryType,
+            qrValue: students.find((s) => s.studentId === studentId.trim())?.qrValue ?? "",
+          }),
         });
         const data = await res.json();
         if (data.success && (data.type === "入室" || data.type === "退室")) {
@@ -106,7 +110,7 @@ export function PickStudentCheckin() {
         setBusy(false);
       }
     },
-    [busy, studentId, showToast]
+    [busy, studentId, students, showToast]
   );
 
   return (
