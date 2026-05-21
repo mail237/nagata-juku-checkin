@@ -226,7 +226,8 @@ function handleScan_(body) {
   if (!st.parentEmail) {
     sendStatus = "エラー";
   } else if (emailViaServer) {
-    sendStatus = "エラー";
+    var fromClient = String(body.sendStatus || "").trim();
+    sendStatus = fromClient === "送信済み" ? "送信済み" : "エラー";
   } else {
     var timeStr = sheetTs;
     var ok = false;
@@ -287,6 +288,34 @@ function handleUpdateLogSendStatus_(body) {
     }
   }
   return err_("ログ行が見つかりません");
+}
+
+function handleGetLastLogType_(body) {
+  var sh = openSheets_();
+  var id = String(body.studentId || "").trim();
+  if (!id) return err_("生徒IDが必要です");
+  return jsonOut_({ type: getLatestLogType_(sh.log, id) });
+}
+
+function handleGetStudent_(body) {
+  var sh = openSheets_();
+  var studentId = String(body.studentId || "").trim();
+  var qrValue = String(body.qrValue || "").trim();
+  var st = studentId
+    ? findStudentByStudentId_(sh.master, studentId)
+    : findStudentByQr_(sh.master, qrValue);
+  if (!st) {
+    return jsonOut_({ ok: false, error: "生徒が見つかりませんでした" });
+  }
+  return jsonOut_({
+    ok: true,
+    student: {
+      studentId: st.studentId,
+      name: st.name,
+      parentEmail: st.parentEmail,
+      grade: st.grade,
+    },
+  });
 }
 
 function handleStudents_() {
@@ -352,6 +381,8 @@ function doPost(e) {
 
     var action = String(body.action || "scan");
     if (action === "scan") return handleScan_(body);
+    if (action === "getStudent") return handleGetStudent_(body);
+    if (action === "getLastLogType") return handleGetLastLogType_(body);
     if (action === "students") return handleStudents_();
     if (action === "logsToday") return handleLogsToday_();
     if (action === "updateStudent") return handleUpdateStudent_(body);

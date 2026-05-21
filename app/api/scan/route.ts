@@ -13,7 +13,7 @@ import {
   nextEntryType,
   type StudentRow,
 } from "@/lib/sheets";
-import { sendParentEmailAfterAppsScriptScan } from "@/lib/scan-email";
+import { resolveSendStatusForParent } from "@/lib/scan-email";
 import { isSendGridConfigured } from "@/lib/sendgrid-config";
 import { sendParentEmail } from "@/lib/send-parent-email";
 import { formatIsoTokyo, formatTimestampTokyo } from "@/lib/time";
@@ -55,6 +55,71 @@ async function checkInWithStudent(student: StudentRow, type: "入室" | "退室"
   });
 }
 
+async function scanViaAppsScript(
+  studentId: string,
+  qrValue: string,
+  entryExplicit: "入室" | "退室" | null
+) {
+  const lookup = studentId
+    ? { action: "getStudent" as const, studentId }
+    : { action: "getStudent" as const, qrValue };
+
+  const info = await appsScriptCall<{
+    ok?: boolean;
+    error?: string;
+    student?: { studentId: string; name: string; parentEmail: string; grade: string };
+  }>(lookup);
+
+  if (!info.ok || !info.student) {
+    return NextResponse.json({
+      success: false,
+      error: info.error ?? "生徒が見つかりませんでした",
+    });
+  }
+
+  const st = info.student;
+  const lastRes = await appsScriptCall<{ type?: "入室" | "退室" | null }>({
+    action: "getLastLogType",
+    studentId: st.studentId,
+  });
+  const last = lastRes.type ?? null;
+
+  let type: "入室" | "退室";
+  if (entryExplicit) {
+    const err = explicitEntryTypeError(last, entryExplicit);
+    if (err) {
+      return NextResponse.json({ success: false, error: err });
+    }
+    type = entryExplicit;
+  } else {
+    type = nextEntryType(last);
+  }
+
+  const at = new Date();
+  const sendStatus = await resolveSendStatusForParent(
+    st.parentEmail,
+    st.name,
+    type,
+    at
+  );
+
+  const data = await appsScriptCall<{
+    success?: boolean;
+    error?: string;
+    studentName?: string;
+    type?: string;
+    timestamp?: string;
+  }>({
+    action: "scan",
+    studentId: st.studentId,
+    entryType: type,
+    emailHandledByServer: true,
+    sendStatus,
+  });
+
+  return NextResponse.json(data);
+}
+
 export async function POST(req: Request) {
   try {
     const body = await req.json();
@@ -73,47 +138,22 @@ export async function POST(req: Request) {
 
     if (appsScriptSheetsEnabled()) {
       try {
+        if (isSendGridConfigured()) {
+          return await scanViaAppsScript(studentId, qrValue, entryExplicit);
+        }
+
         const payload = studentId
           ? {
               action: "scan" as const,
               studentId,
-              emailHandledByServer: isSendGridConfigured(),
               ...(entryExplicit ? { entryType: entryExplicit } : {}),
             }
           : {
               action: "scan" as const,
               qrValue,
-              emailHandledByServer: isSendGridConfigured(),
               ...(entryExplicit ? { entryType: entryExplicit } : {}),
             };
-        const data = await appsScriptCall<{
-          success?: boolean;
-          error?: string;
-          studentName?: string;
-          type?: string;
-          timestamp?: string;
-          studentId?: string;
-          parentEmail?: string;
-          sheetTimestamp?: string;
-        }>(payload);
-        if (
-          data.success &&
-          data.studentName &&
-          (data.type === "入室" || data.type === "退室")
-        ) {
-          await sendParentEmailAfterAppsScriptScan(
-            {
-              success: true,
-              studentName: data.studentName,
-              type: data.type,
-              timestamp: data.timestamp,
-              studentId: data.studentId,
-              parentEmail: data.parentEmail,
-              sheetTimestamp: data.sheetTimestamp,
-            },
-            studentId
-          );
-        }
+        const data = await appsScriptCall(payload);
         return NextResponse.json(data);
       } catch (e) {
         if (e instanceof AppsScriptError) {
