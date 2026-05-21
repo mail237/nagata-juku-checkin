@@ -34,6 +34,7 @@ export async function appsScriptCall<T>(
     redirect: "follow",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ secret, ...payload }),
+    signal: AbortSignal.timeout(12_000),
   });
   const text = await res.text();
   let data: Record<string, unknown>;

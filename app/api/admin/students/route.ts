@@ -6,6 +6,7 @@ import {
   appsScriptCall,
   appsScriptSheetsEnabled,
 } from "@/lib/apps-script-client";
+import { invalidateStudentsCache } from "@/lib/apps-script-student";
 import { verifyAdminSessionToken } from "@/lib/admin-session";
 import { getAllStudents, updateStudentRow } from "@/lib/sheets";
 
@@ -51,6 +52,7 @@ export async function PATCH(req: Request) {
     }
     if (appsScriptSheetsEnabled()) {
       await appsScriptCall({ action: "updateStudent", ...body });
+      invalidateStudentsCache();
       return NextResponse.json({ ok: true });
     }
     await updateStudentRow(rowIndex, {

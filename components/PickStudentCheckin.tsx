@@ -81,7 +81,19 @@ export function PickStudentCheckin() {
   const submit = useCallback(
     async (entryType: "入室" | "退室") => {
       if (!studentId.trim() || busy) return;
+      const picked = students.find((s) => s.studentId === studentId.trim());
+      const qr = picked?.qrValue?.trim() ?? "";
+      if (!qr) {
+        showToast("QR値が未設定です。生徒マスタのD列を確認してください。", "error");
+        return;
+      }
+
       setBusy(true);
+      setCelebration({
+        type: entryType,
+        message: pickCheckinMessage(entryType, picked?.name ?? ""),
+      });
+
       try {
         const res = await fetch("/api/scan", {
           method: "POST",
@@ -89,22 +101,25 @@ export function PickStudentCheckin() {
           body: JSON.stringify({
             studentId: studentId.trim(),
             entryType,
-            qrValue: students.find((s) => s.studentId === studentId.trim())?.qrValue ?? "",
+            qrValue: qr,
           }),
         });
         const data = await res.json();
         if (data.success && (data.type === "入室" || data.type === "退室")) {
-          const name = String(data.studentName ?? "");
+          const name = String(data.studentName ?? picked?.name ?? "");
           setCelebration({
             type: data.type,
             message: pickCheckinMessage(data.type, name),
           });
         } else if (data.success) {
+          setCelebration(null);
           showToast("記録しました", "success");
         } else {
+          setCelebration(null);
           showToast(data.error ?? "エラーが発生しました", "error");
         }
       } catch {
+        setCelebration(null);
         showToast("通信エラーが発生しました", "error");
       } finally {
         setBusy(false);
