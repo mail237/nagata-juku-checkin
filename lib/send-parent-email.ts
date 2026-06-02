@@ -3,7 +3,7 @@ import { requireEnv } from "./env";
 import { formatTimestampTokyo } from "./time";
 
 export async function sendParentEmail(params: {
-  to: string;
+  to: string | string[];
   studentName: string;
   type: "入室" | "退室";
   at: Date;
