@@ -38,6 +38,13 @@ export function PickStudentCheckin() {
     window.setTimeout(() => setToast(null), 5000);
   }, []);
 
+  /** 記録後は次の生徒用に学年・名前をクリア */
+  const resetForm = useCallback(() => {
+    setGrade("");
+    setStudentId("");
+    window.scrollTo({ top: 0, behavior: "smooth" });
+  }, []);
+
   useEffect(() => {
     let cancelled = false;
     const run = async () => {
@@ -107,12 +114,14 @@ export function PickStudentCheckin() {
         const data = await res.json();
         if (data.success && (data.type === "入室" || data.type === "退室")) {
           const name = String(data.studentName ?? picked?.name ?? "");
+          resetForm();
           setCelebration({
             type: data.type,
             message: pickCheckinMessage(data.type, name),
           });
         } else if (data.success) {
           setCelebration(null);
+          resetForm();
           showToast("記録しました", "success");
         } else {
           setCelebration(null);
@@ -125,7 +134,7 @@ export function PickStudentCheckin() {
         setBusy(false);
       }
     },
-    [busy, studentId, students, showToast]
+    [busy, studentId, students, showToast, resetForm]
   );
 
   return (
