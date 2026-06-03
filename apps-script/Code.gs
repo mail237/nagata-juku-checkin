@@ -45,15 +45,14 @@ function assertSecret_(body) {
 }
 
 function openSheets_() {
-  var ss = SpreadsheetApp.getActiveSpreadsheet();
+  var id = String(CONFIG.SPREADSHEET_ID || "").trim();
+  var ss = id
+    ? SpreadsheetApp.openById(id)
+    : SpreadsheetApp.getActiveSpreadsheet();
   if (!ss) {
-    var id = String(CONFIG.SPREADSHEET_ID || "").trim();
-    if (!id) {
-      throw new Error(
-        "スプレッドシートを開けません。スクリプトを表計算に紐づけるか、CONFIG.SPREADSHEET_ID を設定してください。"
-      );
-    }
-    ss = SpreadsheetApp.openById(id);
+    throw new Error(
+      "スプレッドシートを開けません。CONFIG.SPREADSHEET_ID を設定するか、表計算に紐づけてください。"
+    );
   }
   var master = ss.getSheetByName(SHEET_MASTER);
   var log = ss.getSheetByName(SHEET_LOG);
@@ -178,7 +177,8 @@ function sendGrid_(to, subject, body) {
   return res.getResponseCode() >= 200 && res.getResponseCode() < 300;
 }
 
-function handleScan_(body) {
+/** ボタン指定の入室/退室（直前ログの順序チェックなし） */
+function handleRecordEntry_(body) {
   var qrValue = String(body.qrValue || "").trim();
   var studentId = String(body.studentId || "").trim();
   if (!qrValue && !studentId) {
@@ -187,6 +187,10 @@ function handleScan_(body) {
       error: "QRの値か生徒IDのどちらかが必要です",
     });
   }
+  var explicit = String(body.entryType || "").trim();
+  if (explicit !== "入室" && explicit !== "退室") {
+    return jsonOut_({ success: false, error: "entryType が不正です" });
+  }
   var sh = openSheets_();
   var st = studentId
     ? findStudentByStudentId_(sh.master, studentId)
@@ -194,24 +198,10 @@ function handleScan_(body) {
   if (!st) {
     return jsonOut_({ success: false, error: "生徒が見つかりませんでした" });
   }
-  var last = getLatestLogType_(sh.log, st.studentId);
-  var explicit = String(body.entryType || "").trim();
-  var type;
-  if (explicit === "入室" || explicit === "退室") {
-    if (explicit === "入室") {
-      if (last === "入室") {
-        return jsonOut_({
-          success: false,
-          error: "直前の記録が入室のため、退室を押してから入室を記録してください。",
-        });
-      }
-      type = "入室";
-    } else {
-      type = "退室";
-    }
-  } else {
-    type = nextEntryType_(last);
-  }
+  return appendLogForStudent_(sh, st, explicit, body);
+}
+
+function appendLogForStudent_(sh, st, type, body) {
   var at = new Date();
   var sheetTs = formatTokyo_(at);
 
@@ -263,6 +253,43 @@ function handleScan_(body) {
     studentId: st.studentId,
     parentEmail: st.parentEmail,
   });
+}
+
+function handleScan_(body) {
+  var qrValue = String(body.qrValue || "").trim();
+  var studentId = String(body.studentId || "").trim();
+  if (!qrValue && !studentId) {
+    return jsonOut_({
+      success: false,
+      error: "QRの値か生徒IDのどちらかが必要です",
+    });
+  }
+  var sh = openSheets_();
+  var st = studentId
+    ? findStudentByStudentId_(sh.master, studentId)
+    : findStudentByQr_(sh.master, qrValue);
+  if (!st) {
+    return jsonOut_({ success: false, error: "生徒が見つかりませんでした" });
+  }
+  var last = getLatestLogType_(sh.log, st.studentId);
+  var explicit = String(body.entryType || "").trim();
+  var type;
+  if (explicit === "入室" || explicit === "退室") {
+    if (explicit === "入室") {
+      if (last === "入室") {
+        return jsonOut_({
+          success: false,
+          error: "直前の記録が入室のため、退室を押してから入室を記録してください。",
+        });
+      }
+      type = "入室";
+    } else {
+      type = "退室";
+    }
+  } else {
+    type = nextEntryType_(last);
+  }
+  return appendLogForStudent_(sh, st, type, body);
 }
 
 function handleUpdateLogSendStatus_(body) {
@@ -375,6 +402,7 @@ function doPost(e) {
 
     var action = String(body.action || "scan");
     if (action === "scan") return handleScan_(body);
+    if (action === "recordEntry") return handleRecordEntry_(body);
     if (action === "getStudent") return handleGetStudent_(body);
     if (action === "getLastLogType") return handleGetLastLogType_(body);
     if (action === "students") return handleStudents_();

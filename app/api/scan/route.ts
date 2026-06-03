@@ -56,13 +56,13 @@ async function checkInWithStudent(student: StudentRow, type: "入室" | "退室"
   });
 }
 
-function buildScanBody(
+function buildRecordBody(
   st: { qrValue: string; studentId: string },
   type: "入室" | "退室",
   sendStatus: "送信済み" | "エラー"
 ): Record<string, unknown> {
   const body: Record<string, unknown> = {
-    action: "scan",
+    action: "recordEntry",
     entryType: type,
     emailHandledByServer: true,
     sendStatus,
@@ -70,6 +70,31 @@ function buildScanBody(
   if (st.qrValue) body.qrValue = st.qrValue;
   else body.studentId = st.studentId;
   return body;
+}
+
+const CHECKOUT_ORDER_ERROR =
+  "直前の記録が入室ではないため、入室を押してから退室を記録してください。";
+
+async function gasRecordEntry<T extends { success?: boolean; error?: string }>(
+  st: { qrValue: string; studentId: string },
+  type: "入室" | "退室",
+  sendStatus: "送信済み" | "エラー"
+): Promise<T> {
+  try {
+    return await appsScriptCall<T>(buildRecordBody(st, type, sendStatus));
+  } catch (e) {
+    const msg = e instanceof AppsScriptError ? e.message : "";
+    if (!msg.includes("recordEntry")) throw e;
+    const scanBody: Record<string, unknown> = {
+      action: "scan",
+      entryType: type,
+      emailHandledByServer: true,
+      sendStatus,
+    };
+    if (st.qrValue) scanBody.qrValue = st.qrValue;
+    else scanBody.studentId = st.studentId;
+    return appsScriptCall<T>(scanBody);
+  }
 }
 
 async function scanViaAppsScript(
@@ -106,14 +131,14 @@ async function scanViaAppsScript(
     );
   }
 
-  const data = await appsScriptCall<{
+  const data = await gasRecordEntry<{
     success?: boolean;
     error?: string;
     studentName?: string;
     type?: string;
     timestamp?: string;
     sheetTimestamp?: string;
-  }>(buildScanBody(st, type, sendStatus));
+  }>(st, type, sendStatus);
 
   if (data.success === false) {
     return NextResponse.json(data);
