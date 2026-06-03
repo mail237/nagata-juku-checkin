@@ -146,7 +146,6 @@ export function explicitEntryTypeError(
     if (last === "入室") return "直前の記録が入室のため、退室を押してから入室を記録してください。";
     return null;
   }
-  if (last !== "入室") return "直前の記録が入室ではないため、入室を押してから退室を記録してください。";
   return null;
 }
 

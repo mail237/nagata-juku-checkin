@@ -207,12 +207,6 @@ function handleScan_(body) {
       }
       type = "入室";
     } else {
-      if (last !== "入室") {
-        return jsonOut_({
-          success: false,
-          error: "直前の記録が入室ではないため、入室を押してから退室を記録してください。",
-        });
-      }
       type = "退室";
     }
   } else {
