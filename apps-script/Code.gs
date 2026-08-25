@@ -182,6 +182,41 @@ function sendGrid_(to, subject, body) {
   return res.getResponseCode() >= 200 && res.getResponseCode() < 300;
 }
 
+/** SendGrid があればそれ、なければ Google MailApp（塾アカウントのGmail） */
+function sendParentMail_(toRaw, subject, textBody) {
+  var raw = String(toRaw || "").trim();
+  if (!raw) return false;
+  var parts = raw.split(/[,，、;\s]+/);
+  var emails = [];
+  for (var i = 0; i < parts.length; i++) {
+    var e = String(parts[i] || "").trim();
+    if (e.indexOf("@") >= 0) emails.push(e);
+  }
+  if (!emails.length) return false;
+
+  var key = String(CONFIG.SENDGRID_API_KEY || "").trim();
+  var from = String(CONFIG.SENDGRID_FROM || "").trim();
+  if (key && from) {
+    var okAny = false;
+    for (var j = 0; j < emails.length; j++) {
+      if (sendGrid_(emails[j], subject, textBody)) okAny = true;
+    }
+    return okAny;
+  }
+
+  try {
+    MailApp.sendEmail({
+      to: emails.join(","),
+      subject: subject,
+      body: textBody,
+      name: "永田塾",
+    });
+    return true;
+  } catch (err) {
+    return false;
+  }
+}
+
 /** ボタン指定の入室/退室（直前ログの順序チェックなし） */
 function handleRecordEntry_(body) {
   var qrValue = String(body.qrValue || "").trim();
@@ -219,24 +254,21 @@ function appendLogForStudent_(sh, st, type, body) {
     sendStatus = fromClient === "送信済み" ? "送信済み" : "エラー";
   } else {
     var timeStr = sheetTs;
-    var ok = false;
-    if (String(CONFIG.SENDGRID_API_KEY || "").trim()) {
-      var subject =
-        type === "入室"
-          ? "【永田塾】" + st.name + "さんが入室しました"
-          : "【永田塾】" + st.name + "さんが退室しました";
-      var textBody =
-        type === "入室"
-          ? st.name +
-            "さんが永田塾に入室しました。\n\n入室時刻：" +
-            timeStr +
-            "\n\n永田塾"
-          : st.name +
-            "さんが永田塾を退室しました。\n\n退室時刻：" +
-            timeStr +
-            "\n\n永田塾";
-      ok = sendGrid_(st.parentEmail, subject, textBody);
-    }
+    var subject =
+      type === "入室"
+        ? "【永田塾】" + st.name + "さんが入室しました"
+        : "【永田塾】" + st.name + "さんが退室しました";
+    var textBody =
+      type === "入室"
+        ? st.name +
+          "さんが永田塾に入室しました。\n\n入室時刻：" +
+          timeStr +
+          "\n\n永田塾"
+        : st.name +
+          "さんが永田塾を退室しました。\n\n退室時刻：" +
+          timeStr +
+          "\n\n永田塾";
+    var ok = sendParentMail_(st.parentEmail, subject, textBody);
     if (!ok) sendStatus = "エラー";
   }
 
@@ -257,6 +289,7 @@ function appendLogForStudent_(sh, st, type, body) {
     sheetTimestamp: sheetTs,
     studentId: st.studentId,
     parentEmail: st.parentEmail,
+    sendStatus: sendStatus,
   });
 }
 

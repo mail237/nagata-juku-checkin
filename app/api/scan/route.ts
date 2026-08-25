@@ -59,38 +59,39 @@ async function checkInWithStudent(student: StudentRow, type: "入室" | "退室"
 function buildRecordBody(
   st: { qrValue: string; studentId: string },
   type: "入室" | "退室",
-  sendStatus: "送信済み" | "エラー"
+  opts?: { emailHandledByServer?: boolean; sendStatus?: "送信済み" | "エラー" }
 ): Record<string, unknown> {
   const body: Record<string, unknown> = {
     action: "recordEntry",
     entryType: type,
-    emailHandledByServer: true,
-    sendStatus,
   };
+  if (opts?.emailHandledByServer) {
+    body.emailHandledByServer = true;
+    body.sendStatus = opts.sendStatus ?? "エラー";
+  }
   if (st.qrValue) body.qrValue = st.qrValue;
   else body.studentId = st.studentId;
   return body;
 }
 
-const CHECKOUT_ORDER_ERROR =
-  "直前の記録が入室ではないため、入室を押してから退室を記録してください。";
-
 async function gasRecordEntry<T extends { success?: boolean; error?: string }>(
   st: { qrValue: string; studentId: string },
   type: "入室" | "退室",
-  sendStatus: "送信済み" | "エラー"
+  opts?: { emailHandledByServer?: boolean; sendStatus?: "送信済み" | "エラー" }
 ): Promise<T> {
   try {
-    return await appsScriptCall<T>(buildRecordBody(st, type, sendStatus));
+    return await appsScriptCall<T>(buildRecordBody(st, type, opts));
   } catch (e) {
     const msg = e instanceof AppsScriptError ? e.message : "";
     if (!msg.includes("recordEntry")) throw e;
     const scanBody: Record<string, unknown> = {
       action: "scan",
       entryType: type,
-      emailHandledByServer: true,
-      sendStatus,
     };
+    if (opts?.emailHandledByServer) {
+      scanBody.emailHandledByServer = true;
+      scanBody.sendStatus = opts.sendStatus ?? "エラー";
+    }
     if (st.qrValue) scanBody.qrValue = st.qrValue;
     else scanBody.studentId = st.studentId;
     return appsScriptCall<T>(scanBody);
@@ -123,7 +124,9 @@ async function scanViaAppsScript(
 
   let sendStatus: "送信済み" | "エラー" = "エラー";
   let sendError: string | undefined;
-  if (isSendGridConfigured() && st.parentEmail) {
+  const useVercelSendGrid = isSendGridConfigured() && Boolean(st.parentEmail.trim());
+
+  if (useVercelSendGrid) {
     const result = await resolveSendStatusForParent(
       st.parentEmail,
       st.name,
@@ -132,10 +135,7 @@ async function scanViaAppsScript(
     );
     sendStatus = result.status;
     sendError = result.error;
-  } else if (!isSendGridConfigured()) {
-    sendError =
-      "SendGrid の APIキー/送信元が不正です（Vercel の SENDGRID_API_KEY は SG. で始まる本物のキーが必要）";
-  } else if (!st.parentEmail) {
+  } else if (!st.parentEmail.trim()) {
     sendError = "保護者メールが空です";
   }
 
@@ -146,10 +146,24 @@ async function scanViaAppsScript(
     type?: string;
     timestamp?: string;
     sheetTimestamp?: string;
-  }>(st, type, sendStatus);
+    sendStatus?: string;
+  }>(
+    st,
+    type,
+    useVercelSendGrid
+      ? { emailHandledByServer: true, sendStatus }
+      : undefined
+  );
 
   if (data.success === false) {
     return NextResponse.json({ ...data, sendStatus, sendError });
+  }
+
+  if (!useVercelSendGrid) {
+    sendStatus = data.sendStatus === "送信済み" ? "送信済み" : "エラー";
+    if (sendStatus === "エラー" && !sendError) {
+      sendError = "メール送信に失敗しました（Apps Script / Gmail）";
+    }
   }
 
   const sheetTs =
@@ -157,7 +171,7 @@ async function scanViaAppsScript(
       ? data.sheetTimestamp
       : formatTimestampTokyo(at);
 
-  if (sendStatus === "送信済み") {
+  if (useVercelSendGrid && sendStatus === "送信済み") {
     after(async () => {
       try {
         await appsScriptCall({
@@ -172,6 +186,7 @@ async function scanViaAppsScript(
     });
   }
 
+  void rosterPromise;
   return NextResponse.json({
     ...data,
     sendStatus,
@@ -197,25 +212,7 @@ export async function POST(req: Request) {
 
     if (appsScriptSheetsEnabled()) {
       try {
-        if (isSendGridConfigured()) {
-          return await scanViaAppsScript(studentId, qrValue, entryExplicit);
-        }
-
-        const st = await findStudentViaGas(studentId, qrValue);
-        if (!st) {
-          return NextResponse.json({
-            success: false,
-            error: "生徒が見つかりませんでした",
-          });
-        }
-        const scanBody: Record<string, unknown> = {
-          action: "scan",
-          ...(entryExplicit ? { entryType: entryExplicit } : {}),
-        };
-        if (st.qrValue) scanBody.qrValue = st.qrValue;
-        else scanBody.studentId = st.studentId;
-        const data = await appsScriptCall(scanBody);
-        return NextResponse.json(data);
+        return await scanViaAppsScript(studentId, qrValue, entryExplicit);
       } catch (e) {
         if (e instanceof AppsScriptError) {
           return NextResponse.json(
