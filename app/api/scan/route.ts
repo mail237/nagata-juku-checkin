@@ -164,8 +164,10 @@ async function scanViaAppsScript(
     });
   }
 
-  void rosterPromise;
-  return NextResponse.json(data);
+  return NextResponse.json({
+    ...data,
+    sendStatus,
+  });
 }
 
 export async function POST(req: Request) {
