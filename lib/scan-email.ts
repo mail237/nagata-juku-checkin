@@ -3,7 +3,7 @@ import { isSendGridConfigured } from "@/lib/sendgrid-config";
 
 function parseParentEmails(raw: string): string[] {
   return raw
-    .split(/[,\s;]+/g)
+    .split(/[,，、;\s]+/g)
     .map((s) => s.trim())
     .filter(Boolean)
     .filter((s) => s.includes("@"));
@@ -18,11 +18,16 @@ export async function resolveSendStatusForParent(
   const toList = parseParentEmails(parentEmail);
   if (toList.length === 0) return "エラー";
   if (!isSendGridConfigured()) return "エラー";
-  try {
-    await sendParentEmail({ to: toList, studentName, type, at });
-    return "送信済み";
-  } catch (e) {
-    console.error("SendGrid:", e);
-    return "エラー";
+
+  // 1件でも届けば「送信済み」。全員失敗のときだけ「エラー」
+  let okCount = 0;
+  for (const to of toList) {
+    try {
+      await sendParentEmail({ to, studentName, type, at });
+      okCount += 1;
+    } catch (e) {
+      console.error("SendGrid:", to, e);
+    }
   }
+  return okCount > 0 ? "送信済み" : "エラー";
 }

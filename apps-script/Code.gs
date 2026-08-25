@@ -143,9 +143,14 @@ function getLatestLogType_(log, studentId) {
     var r = values[i];
     var sid = String(r[1] || "").trim();
     if (sid !== studentId) continue;
-    var ts = parseLogTs_(r[0]);
     var type = String(r[3] || "").trim();
     if (type !== "入室" && type !== "退室") continue;
+    var ts = 0;
+    if (Object.prototype.toString.call(r[0]) === "[object Date]" && !isNaN(r[0].getTime())) {
+      ts = r[0].getTime();
+    } else {
+      ts = parseLogTs_(cellToTokyoTs_(r[0]));
+    }
     if (ts === 0) continue;
     if (!best || ts >= best.t) best = { t: ts, type: type };
   }
@@ -349,6 +354,22 @@ function handleStudents_() {
   return jsonOut_({ students: students });
 }
 
+function cellToTokyoTs_(cell) {
+  if (Object.prototype.toString.call(cell) === "[object Date]" && !isNaN(cell.getTime())) {
+    return formatTokyo_(cell);
+  }
+  var s = String(cell || "").trim();
+  if (!s) return "";
+  if (/^\d{4}[-/]\d{1,2}[-/]\d{1,2}/.test(s)) {
+    var t = parseLogTs_(s);
+    if (t) return formatTokyo_(new Date(t));
+    return s;
+  }
+  var d = new Date(s);
+  if (!isNaN(d.getTime())) return formatTokyo_(d);
+  return s;
+}
+
 function handleLogsToday_() {
   var sh = openSheets_();
   var values = sh.log.getRange("A2:F").getValues();
@@ -356,7 +377,7 @@ function handleLogsToday_() {
   var logs = [];
   for (var i = 0; i < values.length; i++) {
     var r = values[i];
-    var ts = String(r[0] || "");
+    var ts = cellToTokyoTs_(r[0]);
     if (ts.indexOf(prefix) !== 0) continue;
     logs.push({
       timestamp: ts,
