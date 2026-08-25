@@ -167,9 +167,13 @@ async function scanViaAppsScript(
 
   if (!emailHandledByServer) {
     sendStatus = data.sendStatus === "送信済み" ? "送信済み" : "エラー";
-    if (sendStatus === "エラー" && !sendError) {
-      sendError = "メール送信に失敗しました（Apps Script / Gmail）";
-    } else if (sendStatus === "送信済み") {
+    if (sendStatus === "エラー") {
+      const fromGas =
+        typeof (data as { mailError?: string }).mailError === "string"
+          ? (data as { mailError?: string }).mailError
+          : undefined;
+      sendError = fromGas || sendError || "メール送信に失敗しました（Apps Script / Gmail）";
+    } else {
       sendError = undefined;
     }
   }

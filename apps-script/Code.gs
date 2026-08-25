@@ -16,13 +16,16 @@ var CONFIG = {
   /** このスクリプトと Next.js の APPS_SCRIPT_SECRET を同じにする（長めのランダム文字列推奨） */
   DEPLOY_SECRET: "Monntitti0818Monntitti",
 
-  /** スプレッドシートID（URLの /d/ と /edit の間）。コンテナバインドなら空文字でも可 */
-  SPREADSHEET_ID: "1ObfpbEarx-EaZBG8-XTu2poAASt2EE_5Itybyq2-pBk",
+  /** スプレッドシートID（正しい表）。紐づけスクリプトなら getActive も使う */
+  SPREADSHEET_ID: "1ZUflh0k7gkZa2_1sb-uD0PhQ9znooItHQTgCKQC4fdc",
 
-  /** SendGrid（メール）。空にするとメール送信をスキップし送信ステータスはエラー扱い */
+  /** SendGrid（メール）。空なら Google MailApp（塾Gmail）で送る */
   SENDGRID_API_KEY: "",
   SENDGRID_FROM: "",
 };
+
+/** デプロイ確認用（応答に含まれる） */
+var SCRIPT_VERSION = "2026-08-25-gmailapp";
 
 var SHEET_MASTER = "生徒マスタ";
 var SHEET_LOG = "入退室ログ";
@@ -45,19 +48,21 @@ function assertSecret_(body) {
 }
 
 function openSheets_() {
-  var id = String(CONFIG.SPREADSHEET_ID || "").trim();
-  var ss = id
-    ? SpreadsheetApp.openById(id)
-    : SpreadsheetApp.getActiveSpreadsheet();
+  // 1) 表から開いたスクリプトなら親ブック  2) だめなら CONFIG の ID
+  var ss = SpreadsheetApp.getActiveSpreadsheet();
   if (!ss) {
-    throw new Error(
-      "スプレッドシートを開けません。CONFIG.SPREADSHEET_ID を設定するか、表計算に紐づけてください。"
-    );
+    var id = String(CONFIG.SPREADSHEET_ID || "").trim();
+    if (!id) {
+      throw new Error(
+        "スプレッドシートを開けません。正しい表から「拡張機能→Apps Script」で開き直してください。"
+      );
+    }
+    ss = SpreadsheetApp.openById(id);
   }
   var master = ss.getSheetByName(SHEET_MASTER);
   var log = ss.getSheetByName(SHEET_LOG);
   if (!master || !log) {
-    throw new Error("シートが見つかりません（生徒マスタ / 入退室ログ）");
+    throw new Error("シートが見つかりません（生徒マスタ / 入退室ログ） sheet=" + ss.getName());
   }
   return { ss: ss, master: master, log: log };
 }
@@ -182,17 +187,17 @@ function sendGrid_(to, subject, body) {
   return res.getResponseCode() >= 200 && res.getResponseCode() < 300;
 }
 
-/** SendGrid があればそれ、なければ Google MailApp（塾アカウントのGmail） */
+/** SendGrid があればそれ、なければ GmailApp / MailApp（塾アカウント） */
 function sendParentMail_(toRaw, subject, textBody) {
   var raw = String(toRaw || "").trim();
-  if (!raw) return false;
+  if (!raw) return { ok: false, error: "メール空" };
   var parts = raw.split(/[,，、;\s]+/);
   var emails = [];
   for (var i = 0; i < parts.length; i++) {
     var e = String(parts[i] || "").trim();
     if (e.indexOf("@") >= 0) emails.push(e);
   }
-  if (!emails.length) return false;
+  if (!emails.length) return { ok: false, error: "メール形式不正" };
 
   var key = String(CONFIG.SENDGRID_API_KEY || "").trim();
   var from = String(CONFIG.SENDGRID_FROM || "").trim();
@@ -201,21 +206,36 @@ function sendParentMail_(toRaw, subject, textBody) {
     for (var j = 0; j < emails.length; j++) {
       if (sendGrid_(emails[j], subject, textBody)) okAny = true;
     }
-    if (okAny) return true;
-    // SendGrid 失敗時は MailApp へ
+    if (okAny) return { ok: true };
   }
 
+  var to = emails.join(",");
+  // Workspace では GmailApp の方が通ることが多い
   try {
-    MailApp.sendEmail({
-      to: emails.join(","),
-      subject: subject,
-      body: textBody,
-      name: "永田塾",
-    });
-    return true;
-  } catch (err) {
-    return false;
+    GmailApp.sendEmail(to, subject, textBody, { name: "永田塾" });
+    return { ok: true };
+  } catch (err1) {
+    try {
+      MailApp.sendEmail({
+        to: to,
+        subject: subject,
+        body: textBody,
+        name: "永田塾",
+      });
+      return { ok: true };
+    } catch (err2) {
+      var m1 = err1 && err1.message ? String(err1.message) : String(err1);
+      var m2 = err2 && err2.message ? String(err2.message) : String(err2);
+      return { ok: false, error: (m1 + " / " + m2).slice(0, 300) };
+    }
   }
+}
+
+/** エディタで ▶ 実行して Gmail 許可を出す用 */
+function testMail() {
+  var to = Session.getActiveUser().getEmail();
+  var r = sendParentMail_(to, "【永田塾】メール送信テスト", "テスト送信です。届いたらOKです。");
+  Logger.log(JSON.stringify(r));
 }
 
 /** ボタン指定の入室/退室（直前ログの順序チェックなし） */
@@ -248,8 +268,10 @@ function appendLogForStudent_(sh, st, type, body) {
 
   var emailViaServer = body.emailHandledByServer === true;
   var sendStatus = "送信済み";
+  var mailError = "";
   if (!st.parentEmail) {
     sendStatus = "エラー";
+    mailError = "保護者メールが空です";
   } else if (emailViaServer) {
     var fromClient = String(body.sendStatus || "").trim();
     sendStatus = fromClient === "送信済み" ? "送信済み" : "エラー";
@@ -269,8 +291,11 @@ function appendLogForStudent_(sh, st, type, body) {
           "さんが永田塾を退室しました。\n\n退室時刻：" +
           timeStr +
           "\n\n永田塾";
-    var ok = sendParentMail_(st.parentEmail, subject, textBody);
-    if (!ok) sendStatus = "エラー";
+    var mailResult = sendParentMail_(st.parentEmail, subject, textBody);
+    if (!mailResult.ok) {
+      sendStatus = "エラー";
+      mailError = mailResult.error || "Gmail送信失敗";
+    }
   }
 
   sh.log.appendRow([
@@ -291,6 +316,8 @@ function appendLogForStudent_(sh, st, type, body) {
     studentId: st.studentId,
     parentEmail: st.parentEmail,
     sendStatus: sendStatus,
+    mailError: mailError || undefined,
+    scriptVersion: SCRIPT_VERSION,
   });
 }
 
@@ -312,22 +339,10 @@ function handleScan_(body) {
   }
   var last = getLatestLogType_(sh.log, st.studentId);
   var explicit = String(body.entryType || "").trim();
-  var type;
-  if (explicit === "入室" || explicit === "退室") {
-    if (explicit === "入室") {
-      if (last === "入室") {
-        return jsonOut_({
-          success: false,
-          error: "直前の記録が入室のため、退室を押してから入室を記録してください。",
-        });
-      }
-      type = "入室";
-    } else {
-      type = "退室";
-    }
-  } else {
-    type = nextEntryType_(last);
-  }
+  var type =
+    explicit === "入室" || explicit === "退室"
+      ? explicit
+      : nextEntryType_(last);
   return appendLogForStudent_(sh, st, type, body);
 }
 
@@ -475,5 +490,9 @@ function doPost(e) {
 }
 
 function doGet() {
-  return jsonOut_({ ok: true, message: "Nagata Juku Apps Script proxy is running" });
+  return jsonOut_({
+    ok: true,
+    message: "Nagata Juku Apps Script proxy is running",
+    scriptVersion: SCRIPT_VERSION,
+  });
 }

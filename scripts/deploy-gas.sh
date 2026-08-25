@@ -3,7 +3,7 @@
 set -euo pipefail
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 GAS_FILE="$ROOT/apps-script/Code.gs"
-SHEET_URL="https://docs.google.com/spreadsheets/d/1ObfpbEarx-EaZBG8-XTu2poAASt2EE_5Itybyq2-pBk/edit"
+SHEET_URL="https://docs.google.com/spreadsheets/d/1ZUflh0k7gkZa2_1sb-uD0PhQ9znooItHQTgCKQC4fdc/edit"
 
 if [[ ! -f "$GAS_FILE" ]]; then
   echo "Code.gs が見つかりません: $GAS_FILE"
