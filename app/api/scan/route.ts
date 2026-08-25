@@ -124,19 +124,25 @@ async function scanViaAppsScript(
 
   let sendStatus: "送信済み" | "エラー" = "エラー";
   let sendError: string | undefined;
-  const useVercelSendGrid = isSendGridConfigured() && Boolean(st.parentEmail.trim());
+  /** SendGrid 成功時だけ true。失敗・未設定時は GAS の MailApp（Gmail）に任せる */
+  let emailHandledByServer = false;
 
-  if (useVercelSendGrid) {
+  if (!st.parentEmail.trim()) {
+    sendError = "保護者メールが空です";
+  } else if (isSendGridConfigured()) {
     const result = await resolveSendStatusForParent(
       st.parentEmail,
       st.name,
       type,
       at
     );
-    sendStatus = result.status;
-    sendError = result.error;
-  } else if (!st.parentEmail.trim()) {
-    sendError = "保護者メールが空です";
+    if (result.status === "送信済み") {
+      sendStatus = "送信済み";
+      emailHandledByServer = true;
+    } else {
+      // クレジット切れ等 → Gmail フォールバック
+      sendError = result.error;
+    }
   }
 
   const data = await gasRecordEntry<{
@@ -150,8 +156,8 @@ async function scanViaAppsScript(
   }>(
     st,
     type,
-    useVercelSendGrid
-      ? { emailHandledByServer: true, sendStatus }
+    emailHandledByServer
+      ? { emailHandledByServer: true, sendStatus: "送信済み" }
       : undefined
   );
 
@@ -159,10 +165,12 @@ async function scanViaAppsScript(
     return NextResponse.json({ ...data, sendStatus, sendError });
   }
 
-  if (!useVercelSendGrid) {
+  if (!emailHandledByServer) {
     sendStatus = data.sendStatus === "送信済み" ? "送信済み" : "エラー";
     if (sendStatus === "エラー" && !sendError) {
       sendError = "メール送信に失敗しました（Apps Script / Gmail）";
+    } else if (sendStatus === "送信済み") {
+      sendError = undefined;
     }
   }
 
@@ -171,7 +179,7 @@ async function scanViaAppsScript(
       ? data.sheetTimestamp
       : formatTimestampTokyo(at);
 
-  if (useVercelSendGrid && sendStatus === "送信済み") {
+  if (emailHandledByServer) {
     after(async () => {
       try {
         await appsScriptCall({

@@ -196,12 +196,13 @@ function sendParentMail_(toRaw, subject, textBody) {
 
   var key = String(CONFIG.SENDGRID_API_KEY || "").trim();
   var from = String(CONFIG.SENDGRID_FROM || "").trim();
-  if (key && from) {
+  if (key && from && key.indexOf("SG.") === 0) {
     var okAny = false;
     for (var j = 0; j < emails.length; j++) {
       if (sendGrid_(emails[j], subject, textBody)) okAny = true;
     }
-    return okAny;
+    if (okAny) return true;
+    // SendGrid 失敗時は MailApp へ
   }
 
   try {
