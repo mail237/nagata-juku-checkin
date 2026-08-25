@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { appsScriptSheetsEnabled } from "@/lib/apps-script-client";
+import { isSendGridConfigured } from "@/lib/sendgrid-config";
 
 function isSet(v: string | undefined): boolean {
   return Boolean(v && String(v).trim() !== "");
@@ -19,7 +20,9 @@ function googleServiceAccountReady(): boolean {
 export async function GET() {
   const appsScript = appsScriptSheetsEnabled();
   const checks = {
-    sendgrid: isSet(process.env.SENDGRID_API_KEY) && isSet(process.env.SENDGRID_FROM_EMAIL),
+    sendgrid: isSendGridConfigured(),
+    sendgridEnvPresent:
+      isSet(process.env.SENDGRID_API_KEY) && isSet(process.env.SENDGRID_FROM_EMAIL),
     googleSheets: appsScript || googleServiceAccountReady(),
     appsScriptProxy: appsScript,
     adminPin: isSet(process.env.ADMIN_PIN),

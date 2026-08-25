@@ -122,13 +122,21 @@ async function scanViaAppsScript(
   const at = new Date();
 
   let sendStatus: "送信済み" | "エラー" = "エラー";
+  let sendError: string | undefined;
   if (isSendGridConfigured() && st.parentEmail) {
-    sendStatus = await resolveSendStatusForParent(
+    const result = await resolveSendStatusForParent(
       st.parentEmail,
       st.name,
       type,
       at
     );
+    sendStatus = result.status;
+    sendError = result.error;
+  } else if (!isSendGridConfigured()) {
+    sendError =
+      "SendGrid の APIキー/送信元が不正です（Vercel の SENDGRID_API_KEY は SG. で始まる本物のキーが必要）";
+  } else if (!st.parentEmail) {
+    sendError = "保護者メールが空です";
   }
 
   const data = await gasRecordEntry<{
@@ -141,7 +149,7 @@ async function scanViaAppsScript(
   }>(st, type, sendStatus);
 
   if (data.success === false) {
-    return NextResponse.json(data);
+    return NextResponse.json({ ...data, sendStatus, sendError });
   }
 
   const sheetTs =
@@ -159,7 +167,7 @@ async function scanViaAppsScript(
           sendStatus: "送信済み",
         });
       } catch {
-        /* 旧 GAS では未対応 → 下の deploy:gas で Code.gs を新バージョンデプロイ */
+        /* 旧 GAS では未対応 */
       }
     });
   }
@@ -167,6 +175,7 @@ async function scanViaAppsScript(
   return NextResponse.json({
     ...data,
     sendStatus,
+    sendError,
   });
 }
 

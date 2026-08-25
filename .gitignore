@@ -43,3 +43,4 @@ RECOVERY-CODES.local.txt
 next-env.d.ts
 apps-script/.clasp.json
 apps-script-deploy/
+.env.vercel.production
